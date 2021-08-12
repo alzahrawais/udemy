@@ -1,0 +1,3 @@
+{
+    "mongoURL":"mongodb+srv://awais:awais@cluster0.ztrqs.mongodb.net/myFirstDatabase?retryWrites=true&w=majority"
+}
