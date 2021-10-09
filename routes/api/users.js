@@ -1,45 +1,83 @@
-const express = require('express')
-const router =express.Router();
-const {check,validationResult}=require('express-validator/check')
-const gravatar= require('gravatar')
-const User=require('../../Model/User')
+const express = require('express');
+const router = express.Router();
+const gravatar = require('gravatar');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+const config = require('config');
+const { check, validationResult } = require('express-validator');
+const normalize = require('normalize-url');
 
-router.post('/',[
-    check('name','Please enter the Name').not().isEmpty(),
-    check('email','Please Enter a valid Email').isEmail(),
-    check('password','Enter a password of length 6 or greater').isLength({min:6})
-],
-async (req,res)=>{
-   const errors = validationResult(req);
-       if(!errors.isEmpty()){
-          return res.status(400).json({errors: errors.array()})
-       }
-       const {name, email, password}= req.body;
-       try{
-        let user = await User.findOne(email);
-        if(user){
-            res.status(400).json({errors: [{msg:'User already Exist'}]})
+const User = require('../../models/User');
+
+// @route    POST api/users
+// @desc     Register user
+// @access   Public
+router.post(
+  '/',
+  check('name', 'Name is required').notEmpty(),
+  check('email', 'Please include a valid email').isEmail(),
+  check(
+    'password',
+    'Please enter a password with 6 or more characters'
+  ).isLength({ min: 6 }),
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { name, email, password } = req.body;
+
+    try {
+      let user = await User.findOne({ email });
+
+      if (user) {
+        return res
+          .status(400)
+          .json({ errors: [{ msg: 'User already exists' }] });
+      }
+
+      const avatar = normalize(
+        gravatar.url(email, {
+          s: '200',
+          r: 'pg',
+          d: '404'
+        }),{protocol: 'http'}
+      );
+
+      user = new User({
+        name,
+        email,
+        avatar,
+        password
+      });
+
+      const salt = await bcrypt.genSalt(10);
+
+      user.password = await bcrypt.hash(password, salt);
+
+      await user.save();
+
+      const payload = {
+        user: {
+          id: user.id
         }
+      };
 
-        const avatar=gravatar.url(email, {
-            s:'200',
-            r:'pg',
-            d:'mm'
-        })
+      jwt.sign(
+        payload,
+        config.get('jwtSecret'),
+        { expiresIn: 360000 },
+        (err, token) => {
+          if (err) throw err;
+          res.json({ token });
+        }
+      );
+    } catch (err) {
+      console.error(err.message);
+      res.status(500).send('Server error');
+    }console.log(req.body)
+  }
+);
 
-        user=new user({
-            name,
-            email,
-            password
-        })
-
-        res.send('User API');
-       }catch (err) {
-        console.error(err.message);
-        res.status(500).send('Server Error')
-       }
-       console.log(req.body);
-       
-})
-
-module.exports=router;
+module.exports = router;
